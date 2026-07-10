@@ -1,0 +1,49 @@
+name: Build POPS Manager APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Unzip project
+        run: unzip -o pops-manager.zip
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install NDK / CMake
+        run: sdkmanager --install "ndk;26.3.11579264" "cmake;3.22.1"
+
+      - name: Vendor cue2pops source
+        run: |
+          rm -rf pops-manager/app/src/main/cpp/cue2pops
+          git clone --depth 1 https://github.com/israpps/cue2pops pops-manager/app/src/main/cpp/cue2pops
+
+      - name: Build debug APK
+        working-directory: pops-manager
+        run: gradle assembleDebug --stacktrace
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pops-manager-debug-apk
+          path: pops-manager/app/build/outputs/apk/debug/*.apk
