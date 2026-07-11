@@ -8,7 +8,9 @@ import com.popsmanager.data.CoverArtFetcher
 import com.popsmanager.data.GameRepository
 import com.popsmanager.data.PopsGame
 import com.popsmanager.data.PopsGameStatus
+import com.popsmanager.data.ReverseItem
 import com.popsmanager.data.TitleDatabase
+import com.popsmanager.data.VcdEntry
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -33,6 +35,59 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     val destUri: StateFlow<Uri?> = _destUri.asStateFlow()
 
     private var sourceUri: Uri? = null
+
+    // --- Reverse conversion (VCD -> BIN/CUE) ---
+    private val _reverseItems = MutableStateFlow<List<ReverseItem>>(emptyList())
+    val reverseItems: StateFlow<List<ReverseItem>> = _reverseItems.asStateFlow()
+
+    private val _reverseSourceUri = MutableStateFlow<Uri?>(null)
+    val reverseSourceUri: StateFlow<Uri?> = _reverseSourceUri.asStateFlow()
+
+    private val _reverseDestUri = MutableStateFlow<Uri?>(null)
+    val reverseDestUri: StateFlow<Uri?> = _reverseDestUri.asStateFlow()
+
+    private val _reverseStatusMessage = MutableStateFlow("Pick a folder with .VCD files to convert back to BIN/CUE.")
+    val reverseStatusMessage: StateFlow<String> = _reverseStatusMessage.asStateFlow()
+
+    fun onReverseSourceSelected(treeUri: Uri) {
+        _reverseSourceUri.value = treeUri
+        viewModelScope.launch {
+            _reverseStatusMessage.value = "Scanning for .VCD files..."
+            val found = repository.scanVcdFolder(treeUri)
+            _reverseItems.value = found.map { ReverseItem(it.documentId, it.displayName) }
+            _reverseStatusMessage.value = "Found ${found.size} VCD file(s)."
+        }
+    }
+
+    fun onReverseDestSelected(treeUri: Uri) {
+        _reverseDestUri.value = treeUri
+        _reverseStatusMessage.value = "Destination set. Tap Convert on any VCD below."
+    }
+
+    fun convertVcdToBinCue(item: ReverseItem) {
+        val dest = _reverseDestUri.value ?: return
+        viewModelScope.launch {
+            updateReverseItem(item.documentId) { it.copy(status = PopsGameStatus.CONVERTING) }
+            val (success, error) = repository.convertVcdToBinCue(
+                vcdUri = Uri.parse(item.documentId),
+                vcdName = item.displayName,
+                destUri = dest
+            )
+            updateReverseItem(item.documentId) {
+                it.copy(status = if (success) PopsGameStatus.INSTALLED else PopsGameStatus.ERROR, lastError = error)
+            }
+        }
+    }
+
+    fun convertAllVcds() {
+        viewModelScope.launch {
+            _reverseItems.value.filter { it.status == PopsGameStatus.PENDING }.forEach { convertVcdToBinCue(it) }
+        }
+    }
+
+    private fun updateReverseItem(documentId: String, transform: (ReverseItem) -> ReverseItem) {
+        _reverseItems.value = _reverseItems.value.map { if (it.documentId == documentId) transform(it) else it }
+    }
 
     fun onSourceFolderSelected(treeUri: Uri) {
         sourceUri = treeUri
@@ -81,7 +136,6 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
 
     fun searchTitles(query: String): List<Pair<String, String>> = titleDb.searchTitles(query)
 
-    /** Converts and installs a single game: fetches cover art, runs cue2pops, copies to the drive. */
     fun convertAndInstall(game: PopsGame) {
         val dest = _destUri.value ?: return
         val gameId = game.gameId ?: return
