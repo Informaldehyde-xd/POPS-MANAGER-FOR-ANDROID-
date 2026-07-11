@@ -28,6 +28,7 @@ import androidx.compose.ui.window.Dialog
 import coil.compose.AsyncImage
 import com.popsmanager.data.PopsGame
 import com.popsmanager.data.PopsGameStatus
+import com.popsmanager.data.ReverseItem
 import com.popsmanager.ui.LibraryViewModel
 import com.popsmanager.ui.theme.PopsAccent
 import com.popsmanager.ui.theme.PopsManagerTheme
@@ -58,17 +59,47 @@ class MainActivity : ComponentActivity() {
                 viewModel.onDestFolderSelected(uri)
             }
         }
+        val reverseSourcePicker = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri: Uri? ->
+            if (uri != null) {
+                contentResolver.takePersistableUriPermission(
+                    uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                )
+                viewModel.onReverseSourceSelected(uri)
+            }
+        }
+        val reverseDestPicker = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri: Uri? ->
+            if (uri != null) {
+                contentResolver.takePersistableUriPermission(
+                    uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                )
+                viewModel.onReverseDestSelected(uri)
+            }
+        }
 
         setContent {
             PopsManagerTheme {
                 var titleEditGame by remember { mutableStateOf<PopsGame?>(null) }
+                var mode by remember { mutableStateOf(AppMode.INSTALL) }
 
-                LibraryScreen(
-                    viewModel = viewModel,
-                    onPickSource = { sourcePicker.launch(null) },
-                    onPickDest = { destPicker.launch(null) },
-                    onEditTitle = { game -> titleEditGame = game }
-                )
+                Column(modifier = Modifier.fillMaxSize()) {
+                    ModeSwitcher(mode = mode, onModeChange = { mode = it })
+
+                    Box(modifier = Modifier.weight(1f)) {
+                        when (mode) {
+                            AppMode.INSTALL -> LibraryScreen(
+                                viewModel = viewModel,
+                                onPickSource = { sourcePicker.launch(null) },
+                                onPickDest = { destPicker.launch(null) },
+                                onEditTitle = { game -> titleEditGame = game }
+                            )
+                            AppMode.EXTRACT -> ReverseScreen(
+                                viewModel = viewModel,
+                                onPickSource = { reverseSourcePicker.launch(null) },
+                                onPickDest = { reverseDestPicker.launch(null) }
+                            )
+                        }
+                    }
+                }
 
                 if (titleEditGame != null) {
                     TitleEditDialog(
@@ -83,6 +114,32 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+}
+
+enum class AppMode { INSTALL, EXTRACT }
+
+@Composable
+fun ModeSwitcher(mode: AppMode, onModeChange: (AppMode) -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(PopsSurfaceElevated)
+            .padding(8.dp)
+    ) {
+        listOf(AppMode.INSTALL to "Install (BIN/CUE \u2192 VCD)", AppMode.EXTRACT to "Extract (VCD \u2192 BIN/CUE)")
+            .forEach { (m, label) ->
+                val selected = mode == m
+                Button(
+                    onClick = { onModeChange(m) },
+                    modifier = Modifier.weight(1f).padding(horizontal = 4.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (selected) PopsPrimary else PopsSurfaceElevated
+                    )
+                ) {
+                    Text(label, style = MaterialTheme.typography.labelSmall, color = if (selected) Color.White else PopsOnSurfaceMuted)
+                }
+            }
     }
 }
 
@@ -306,6 +363,136 @@ fun TitleEditDialog(
             }
         }
     }
+}
+
+@Composable
+fun ReverseScreen(
+    viewModel: LibraryViewModel,
+    onPickSource: () -> Unit,
+    onPickDest: () -> Unit
+) {
+    val items by viewModel.reverseItems.collectAsState()
+    val status by viewModel.reverseStatusMessage.collectAsState()
+    val destUri by viewModel.reverseDestUri.collectAsState()
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {
+                    Column {
+                        Text("EXTRACT MODE", style = MaterialTheme.typography.titleLarge, color = PopsAccent)
+                        Text("VCD \u2192 BIN/CUE", style = MaterialTheme.typography.labelSmall, color = PopsOnSurfaceMuted)
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = PopsSurfaceElevated, titleContentColor = PopsAccent)
+            )
+        },
+        containerColor = MaterialTheme.colorScheme.background
+    ) { padding ->
+        Column(modifier = Modifier.padding(padding).fillMaxSize().padding(16.dp)) {
+
+            Button(
+                onClick = onPickSource,
+                modifier = Modifier.fillMaxWidth().height(52.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = PopsPrimary)
+            ) {
+                Text("1. PICK FOLDER WITH .VCD FILES", style = MaterialTheme.typography.labelLarge)
+            }
+
+            Spacer(Modifier.height(8.dp))
+
+            Button(
+                onClick = onPickDest,
+                modifier = Modifier.fillMaxWidth().height(52.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = if (destUri != null) PopsSurfaceElevated else PopsPrimary)
+            ) {
+                Text(
+                    if (destUri != null) "2. OUTPUT FOLDER SET \u2713 (tap to change)" else "2. PICK OUTPUT FOLDER (BIN/CUE)",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = if (destUri != null) PopsAccent else Color.White
+                )
+            }
+
+            Spacer(Modifier.height(10.dp))
+            Text(status, style = MaterialTheme.typography.bodyMedium, color = PopsOnSurfaceMuted)
+
+            if (destUri != null && items.any { it.status == PopsGameStatus.PENDING }) {
+                Spacer(Modifier.height(10.dp))
+                Button(
+                    onClick = { viewModel.convertAllVcds() },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = PopsSurfaceElevated)
+                ) {
+                    Text("Convert All", color = PopsAccent)
+                }
+            }
+
+            Spacer(Modifier.height(16.dp))
+
+            if (items.isEmpty()) {
+                Column(modifier = Modifier.fillMaxWidth().padding(top = 48.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("No VCDs loaded yet", style = MaterialTheme.typography.titleMedium, color = PopsAccent)
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Pick a folder containing installed .VCD files (e.g. your drive's /POPS folder) to convert them back to standard BIN/CUE.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = PopsOnSurfaceMuted,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            } else {
+                LazyColumn {
+                    items(items) { item ->
+                        ReverseRow(
+                            item = item,
+                            destReady = destUri != null,
+                            onConvert = { viewModel.convertVcdToBinCue(item) }
+                        )
+                        Divider(color = PopsSurfaceElevated)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ReverseRow(item: ReverseItem, destReady: Boolean, onConvert: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(PopsSurfaceElevated.copy(alpha = 0.5f))
+            .padding(10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                item.displayName.substringBeforeLast('.', item.displayName),
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onBackground
+            )
+            Text(reverseStatusLabel(item.status), style = MaterialTheme.typography.labelSmall, color = PopsAccent)
+            if (item.status == PopsGameStatus.ERROR && item.lastError != null) {
+                Text(item.lastError!!, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+            }
+        }
+
+        if (item.status == PopsGameStatus.PENDING && destReady) {
+            Button(onClick = onConvert, colors = ButtonDefaults.buttonColors(containerColor = PopsPrimary)) {
+                Text("Convert")
+            }
+        }
+    }
+}
+
+private fun reverseStatusLabel(status: PopsGameStatus): String = when (status) {
+    PopsGameStatus.PENDING -> "Ready to convert"
+    PopsGameStatus.CONVERTING -> "Converting (pops2cue)..."
+    PopsGameStatus.INSTALLED -> "Converted \u2713"
+    PopsGameStatus.ERROR -> "Error — try again"
+    else -> "Pending"
 }
 
 private fun statusLabel(status: PopsGameStatus): String = when (status) {
