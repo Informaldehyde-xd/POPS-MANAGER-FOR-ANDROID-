@@ -38,6 +38,11 @@ jobs:
           rm -rf pops-manager/app/src/main/cpp/cue2pops
           git clone --depth 1 https://github.com/israpps/cue2pops pops-manager/app/src/main/cpp/cue2pops
 
+      - name: Vendor pops2cue source
+        run: |
+          rm -rf pops-manager/app/src/main/cpp/pops2cue
+          git clone --depth 1 https://github.com/bucanero/pops2cue pops-manager/app/src/main/cpp/pops2cue
+
       - name: Build debug APK
         working-directory: pops-manager
         run: gradle assembleDebug --stacktrace
