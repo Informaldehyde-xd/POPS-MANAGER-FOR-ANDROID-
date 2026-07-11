@@ -81,7 +81,7 @@ class MainActivity : ComponentActivity() {
                 var titleEditGame by remember { mutableStateOf<PopsGame?>(null) }
                 var mode by remember { mutableStateOf(AppMode.INSTALL) }
 
-                Column(modifier = Modifier.fillMaxSize()) {
+                Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
                     ModeSwitcher(mode = mode, onModeChange = { mode = it })
 
                     Box(modifier = Modifier.weight(1f)) {
