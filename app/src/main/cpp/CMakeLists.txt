@@ -1,6 +1,15 @@
 cmake_minimum_required(VERSION 3.22.1)
 project(popsmanager_native)
 
+# CRITICAL: add_executable() targets don't default to the same output folder
+# Android Gradle Plugin scans for .so files to package into the APK — only
+# add_library() targets do, by default. Forcing RUNTIME_OUTPUT_DIRECTORY to
+# match LIBRARY_OUTPUT_DIRECTORY (which AGP sets automatically) is what makes
+# these "executable renamed to .so" binaries actually end up bundled and
+# runnable — without this, they silently compile fine but never make it into
+# the APK, which is exactly the "No such file or directory" error at runtime.
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_LIBRARY_OUTPUT_DIRECTORY})
+
 # CI clones both tools here before building (see .github workflow).
 # Local build:
 #   git clone https://github.com/israpps/cue2pops app/src/main/cpp/cue2pops
