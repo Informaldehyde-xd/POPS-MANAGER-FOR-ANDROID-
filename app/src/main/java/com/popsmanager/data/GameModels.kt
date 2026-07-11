@@ -24,3 +24,11 @@ enum class PopsGameStatus {
     INSTALLED,      // done
     ERROR
 }
+
+/** One VCD being reverse-converted back to BIN/CUE. */
+data class ReverseItem(
+    val documentId: String,
+    val displayName: String,
+    var status: PopsGameStatus = PopsGameStatus.PENDING,
+    var lastError: String? = null
+)
