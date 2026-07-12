@@ -1,14 +1,13 @@
 cmake_minimum_required(VERSION 3.22.1)
 project(popsmanager_native)
 
-# CRITICAL: add_executable() targets don't default to the same output folder
-# Android Gradle Plugin scans for .so files to package into the APK — only
-# add_library() targets do, by default. Forcing RUNTIME_OUTPUT_DIRECTORY to
-# match LIBRARY_OUTPUT_DIRECTORY (which AGP sets automatically) is what makes
-# these "executable renamed to .so" binaries actually end up bundled and
-# runnable — without this, they silently compile fine but never make it into
-# the APK, which is exactly the "No such file or directory" error at runtime.
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_LIBRARY_OUTPUT_DIRECTORY})
+# IMPORTANT: relying on AGP's CMake-integration to auto-package an
+# add_executable() target (even one named lib*.so) has proven unreliable
+# across AGP versions — the file compiles fine but doesn't always make it
+# into the APK. Writing straight into src/main/jniLibs/<ABI>/ instead uses
+# Android's actual guaranteed packaging mechanism (anything there always
+# gets bundled), sidestepping the CMake-integration guesswork entirely.
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../jniLibs/${ANDROID_ABI})
 
 # CI clones both tools here before building (see .github workflow).
 # Local build:
@@ -39,10 +38,11 @@ if(NOT POPS2CUE_SOURCES)
                          "Run the vendor step (see README) before building.")
 endif()
 
-# Built as executables, but named lib*.so and placed under jniLibs/<abi>/ by
-# Gradle's externalNativeBuild packaging. Android only allows exec() of files
-# inside applicationInfo.nativeLibraryDir, so this naming trick lets us ship
-# and run real CLI binaries from Kotlin via ProcessBuilder.
+# Built as executables, but named lib*.so — Android only allows exec() of
+# files inside applicationInfo.nativeLibraryDir, so this naming trick lets us
+# ship and run real CLI binaries from Kotlin via ProcessBuilder. Writing them
+# straight to src/main/jniLibs/<ABI>/ (set above) is what actually gets them
+# bundled into the APK.
 add_executable(cue2pops ${CUE2POPS_SOURCES})
 set_target_properties(cue2pops PROPERTIES OUTPUT_NAME "cue2pops" SUFFIX ".so" PREFIX "lib")
 target_include_directories(cue2pops PRIVATE ${CUE2POPS_DIR})
