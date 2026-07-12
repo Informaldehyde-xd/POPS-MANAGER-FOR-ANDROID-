@@ -25,6 +25,10 @@ file(GLOB POPS2CUE_SOURCES
     ${POPS2CUE_DIR}/*.c
     ${POPS2CUE_DIR}/*.cpp
 )
+# The pops2cue repo bundles its own reference copy of cue2pops.c alongside
+# pops2cue.c — both define main(), which breaks the link with a duplicate
+# symbol error. We only want the actual pops2cue tool here.
+list(FILTER POPS2CUE_SOURCES EXCLUDE REGEX ".*/cue2pops\\.c$")
 
 if(NOT CUE2POPS_SOURCES)
     message(FATAL_ERROR "cue2pops sources missing at ${CUE2POPS_DIR}. "
@@ -35,6 +39,10 @@ if(NOT POPS2CUE_SOURCES)
                          "Run the vendor step (see README) before building.")
 endif()
 
+# Built as executables, but named lib*.so and placed under jniLibs/<abi>/ by
+# Gradle's externalNativeBuild packaging. Android only allows exec() of files
+# inside applicationInfo.nativeLibraryDir, so this naming trick lets us ship
+# and run real CLI binaries from Kotlin via ProcessBuilder.
 add_executable(cue2pops ${CUE2POPS_SOURCES})
 set_target_properties(cue2pops PROPERTIES OUTPUT_NAME "cue2pops" SUFFIX ".so" PREFIX "lib")
 target_include_directories(cue2pops PRIVATE ${CUE2POPS_DIR})
