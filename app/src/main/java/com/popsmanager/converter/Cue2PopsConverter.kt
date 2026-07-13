@@ -58,7 +58,11 @@ class Cue2PopsConverter(private val context: Context) {
                 outputDir.listFiles()?.firstOrNull { it.extension.equals("vcd", ignoreCase = true) }
             }
 
-            val success = finished && exitCode == 0 && actualVcd != null
+            // This reconstructed tool apparently exits with code 1 even on
+            // genuine success (its own log confirms the file was written) —
+            // so exit code alone isn't a reliable success signal here. Trust
+            // the actual output file existing with a sane size instead.
+            val success = finished && actualVcd != null && actualVcd.length() > 1024
             val fullLog = "exit code: $exitCode\n$log"
 
             ConversionResult(success, if (success) actualVcd else null, fullLog)
