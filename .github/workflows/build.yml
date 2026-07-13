@@ -30,12 +30,9 @@ jobs:
       - name: Install NDK / CMake
         run: sdkmanager --install "ndk;26.3.11579264" "cmake;3.22.1"
 
-      - name: Vendor cue2pops source
-        run: |
-          rm -rf app/src/main/cpp/cue2pops
-          git clone --depth 1 https://github.com/israpps/cue2pops app/src/main/cpp/cue2pops
-
-      - name: Vendor pops2cue source
+      # Vendors the native BIN/CUE <-> VCD converter sources so CMake has
+      # something to compile.
+      - name: Vendor pops2cue source (provides both matched tools)
         run: |
           rm -rf app/src/main/cpp/pops2cue
           git clone --depth 1 https://github.com/bucanero/pops2cue app/src/main/cpp/pops2cue
