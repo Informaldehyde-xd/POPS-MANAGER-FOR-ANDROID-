@@ -50,7 +50,7 @@ class GameRepository(private val context: Context) {
                 ?.takeIf { it.name?.substringAfterLast('.', "")?.lowercase() == "bin" }
                 ?: children.firstOrNull { it.name?.endsWith(".bin", ignoreCase = true) == true }
 
-            if (binMatch == null) continue
+            if (binMatch == null) continue // no paired BIN found, skip this cue
 
             val gameId = Ps1IdReader.readGameId(context, binMatch.uri)
 
@@ -65,6 +65,11 @@ class GameRepository(private val context: Context) {
         }
     }
 
+    /**
+     * Converts one game's CUE/BIN into a VCD and installs it (plus cover art, if provided)
+     * onto the destination drive. Copies files through app-private cache since the native
+     * converter needs real filesystem paths, not SAF content:// Uris.
+     */
     suspend fun convertAndInstall(
         cueUri: Uri,
         cueName: String,
@@ -82,11 +87,13 @@ class GameRepository(private val context: Context) {
             copyUriTo(cueUri, localCue) ?: return@withContext false to "Could not read the .cue file."
             copyUriTo(binUri, localBin) ?: return@withContext false to "Could not read the .bin file."
 
+            // cue2pops reads the BIN filename referenced inside the .cue sheet — make sure
+            // it matches what we actually copied, in case the source names didn't align.
             rewriteCueBinReference(localCue, localBin.name)
 
             val result = converter.convert(localCue, jobDir)
             if (!result.success || result.outputVcd == null) {
-                return@withContext false to "Conversion failed: ${result.log.take(300)}"
+                return@withContext false to "Conversion failed: ${result.log.take(2000)}"
             }
 
             val installResult = installer.installGame(destUri, result.outputVcd, gameId, title)
@@ -106,6 +113,7 @@ class GameRepository(private val context: Context) {
         }
     }
 
+    /** Recursively finds .VCD files under a folder, for reverse conversion back to BIN/CUE. */
     suspend fun scanVcdFolder(treeUri: Uri): List<VcdEntry> = withContext(Dispatchers.IO) {
         val root = DocumentFile.fromTreeUri(context, treeUri) ?: return@withContext emptyList()
         val found = mutableListOf<VcdEntry>()
@@ -126,6 +134,11 @@ class GameRepository(private val context: Context) {
         }
     }
 
+    /**
+     * Converts a .VCD back to .bin/.cue and copies both onto the destination folder.
+     * Like the forward pipeline, this copies through app-private cache since the
+     * native converter needs real filesystem paths, not SAF content:// Uris.
+     */
     suspend fun convertVcdToBinCue(
         vcdUri: Uri,
         vcdName: String,
@@ -138,7 +151,7 @@ class GameRepository(private val context: Context) {
 
             val result = reverseConverter.convert(localVcd, jobDir)
             if (!result.success || result.outputCue == null) {
-                return@withContext false to "Reverse conversion failed: ${result.log.take(300)}"
+                return@withContext false to "Reverse conversion failed: ${result.log.take(2000)}"
             }
 
             val destRoot = DocumentFile.fromTreeUri(context, destUri)
@@ -177,6 +190,7 @@ class GameRepository(private val context: Context) {
         }
     }
 
+    /** Ensures the .cue file's FILE line points at the BIN we actually copied alongside it. */
     private fun rewriteCueBinReference(cueFile: File, binFileName: String) {
         try {
             val lines = cueFile.readLines()
@@ -190,6 +204,7 @@ class GameRepository(private val context: Context) {
             }
             cueFile.writeText(rewritten.joinToString("\n"))
         } catch (e: Exception) {
+            // if this fails, conversion will just fail with a clear log message instead
         }
     }
 }
