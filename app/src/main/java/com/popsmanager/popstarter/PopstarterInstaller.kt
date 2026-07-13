@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import androidx.documentfile.provider.DocumentFile
 import com.popsmanager.util.GameIdUtil
+import com.popsmanager.util.ImageFormatter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -60,7 +61,7 @@ class PopstarterInstaller(private val context: Context) {
         }
     }
 
-    /** Saves cover art into /POPS/ART on the drive, named to match the installed VCD's serial. */
+    /** Saves cover art into /POPS/ART on the drive, normalized to a 200x200 8-bit PNG. */
     suspend fun installCoverArt(usbRootUri: Uri, gameId: String, localArtPath: String): Boolean =
         withContext(Dispatchers.IO) {
             try {
@@ -68,15 +69,15 @@ class PopstarterInstaller(private val context: Context) {
                 val popsDir = root.findFile("POPS") ?: root.createDirectory("POPS") ?: return@withContext false
                 val artDir = popsDir.findFile("ART") ?: popsDir.createDirectory("ART") ?: return@withContext false
 
-                val ext = localArtPath.substringAfterLast('.', "jpg")
-                val mime = if (ext == "png") "image/png" else "image/jpeg"
-                val fileName = "${gameId}_COV.$ext"
+                val sourceBytes = File(localArtPath).readBytes()
+                val normalizedPng = ImageFormatter.normalizeToPng200x200(sourceBytes) ?: return@withContext false
 
+                val fileName = "${gameId}_COV.png"
                 artDir.findFile(fileName)?.delete()
-                val newFile = artDir.createFile(mime, fileName) ?: return@withContext false
+                val newFile = artDir.createFile("image/png", fileName) ?: return@withContext false
 
                 context.contentResolver.openOutputStream(newFile.uri)?.use { out ->
-                    File(localArtPath).inputStream().use { input -> input.copyTo(out) }
+                    out.write(normalizedPng)
                 }
                 true
             } catch (e: Exception) {
