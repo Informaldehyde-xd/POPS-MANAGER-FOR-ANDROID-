@@ -43,6 +43,25 @@ jobs:
       - name: Build debug APK
         run: gradle assembleDebug --stacktrace
 
+      - name: Debug native library packaging
+        if: always()
+        run: |
+          echo "=== app/src/main/jniLibs after native build ==="
+          find app/src/main/jniLibs -type f 2>/dev/null || echo "(jniLibs folder doesn't exist)"
+          echo ""
+          echo "=== Raw CMake/ninja output folders (any ABI) ==="
+          find app/build/intermediates/cxx -name "lib*.so" 2>/dev/null || echo "(none found)"
+          echo ""
+          echo "=== Contents of the built APK's lib/ folder ==="
+          mkdir -p /tmp/apk_check
+          APK=$(find app/build/outputs/apk/debug -name "*.apk" | head -1)
+          if [ -n "$APK" ]; then
+            unzip -o "$APK" -d /tmp/apk_check > /dev/null
+            find /tmp/apk_check/lib -type f 2>/dev/null || echo "(no lib/ folder in APK at all)"
+          else
+            echo "(no APK found — build must have failed)"
+          fi
+
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
