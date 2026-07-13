@@ -39,6 +39,18 @@ android {
         }
     }
 
+    // CRITICAL for running bundled native executables: by default, modern
+    // Android maps native libraries directly out of the (compressed) APK
+    // rather than extracting them to real files — fine for dlopen()'d
+    // libraries, but it means there's no actual standalone file on disk for
+    // ProcessBuilder to exec(). This forces real extraction so
+    // nativeLibraryDir contains genuine, executable files.
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_1_8
         targetCompatibility = JavaVersion.VERSION_1_8
