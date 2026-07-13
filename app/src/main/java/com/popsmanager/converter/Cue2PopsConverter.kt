@@ -8,8 +8,10 @@ import java.util.concurrent.TimeUnit
 
 /**
  * Wraps the bundled `cue2pops` native binary (compiled from
- * https://github.com/israpps/cue2pops by the CI workflow, shipped as
- * libcue2pops.so so Android's exec() sandbox allows running it).
+ * https://github.com/bucanero/pops2cue's own bundled cue2pops.c — the same
+ * repo as the reverse converter, so both tools agree on the exact same VCD
+ * format), shipped as libcue2pops.so so Android's exec() sandbox allows
+ * running it.
  *
  * cue2pops requires:
  *   - a MODE2/2352 raw BIN dump referenced by an ASCII .cue sheet
