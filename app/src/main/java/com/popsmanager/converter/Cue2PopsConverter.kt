@@ -48,9 +48,20 @@ class Cue2PopsConverter(private val context: Context) {
 
             val log = process.inputStream.bufferedReader().readText()
             val finished = process.waitFor(10, TimeUnit.MINUTES)
-            val success = finished && process.exitValue() == 0 && outputVcd.exists()
+            val exitCode = if (finished) process.exitValue() else -1
 
-            ConversionResult(success, if (success) outputVcd else null, log)
+            // The tool may not always honor our exact requested output filename —
+            // fall back to whatever .VCD it actually created in outputDir.
+            val actualVcd = if (outputVcd.exists()) {
+                outputVcd
+            } else {
+                outputDir.listFiles()?.firstOrNull { it.extension.equals("vcd", ignoreCase = true) }
+            }
+
+            val success = finished && exitCode == 0 && actualVcd != null
+            val fullLog = "exit code: $exitCode\n$log"
+
+            ConversionResult(success, if (success) actualVcd else null, fullLog)
         } catch (e: Exception) {
             ConversionResult(false, null, "Conversion failed to start: ${e.message}")
         }
