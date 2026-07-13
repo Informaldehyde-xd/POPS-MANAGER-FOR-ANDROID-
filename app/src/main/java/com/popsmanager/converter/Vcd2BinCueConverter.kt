@@ -39,6 +39,8 @@ class Vcd2BinCueConverter(private val context: Context) {
         outputDir.mkdirs()
 
         try {
+            // pops2cue writes its output next to the input VCD, named after it —
+            // run it inside outputDir so that's exactly where the results land.
             val localVcd = File(outputDir, vcdFile.name)
             if (localVcd != vcdFile) vcdFile.copyTo(localVcd, overwrite = true)
 
@@ -49,12 +51,17 @@ class Vcd2BinCueConverter(private val context: Context) {
 
             val log = process.inputStream.bufferedReader().readText()
             val finished = process.waitFor(10, TimeUnit.MINUTES)
+            val exitCode = if (finished) process.exitValue() else -1
 
             val cueOut = outputDir.listFiles()?.firstOrNull { it.extension.equals("cue", ignoreCase = true) }
             val binOut = outputDir.listFiles()?.firstOrNull { it.extension.equals("bin", ignoreCase = true) }
 
-            val success = finished && process.exitValue() == 0 && cueOut != null
-            ReverseResult(success, cueOut, binOut, log)
+            // Same reconstructed codebase as Cue2PopsConverter's tool, which is
+            // confirmed to exit nonzero even on genuine success — trust the
+            // actual .cue file existing rather than the exit code.
+            val success = finished && cueOut != null
+            val fullLog = "exit code: $exitCode\n$log"
+            ReverseResult(success, cueOut, binOut, fullLog)
         } catch (e: Exception) {
             ReverseResult(false, null, null, "Reverse conversion failed to start: ${e.message}")
         }
