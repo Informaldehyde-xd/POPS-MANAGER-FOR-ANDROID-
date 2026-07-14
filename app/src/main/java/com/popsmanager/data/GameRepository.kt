@@ -151,7 +151,16 @@ class GameRepository(private val context: Context) {
 
             val result = reverseConverter.convert(localVcd, jobDir)
             if (!result.success || result.outputCue == null) {
-                return@withContext false to "Reverse conversion failed: ${result.log.take(2000)}"
+                val hexDump = try {
+                    val head = localVcd.inputStream().use { it.readNBytes(64) }
+                    head.joinToString(" ") { "%02X".format(it) }
+                } catch (e: Exception) {
+                    "(couldn't read header: ${e.message})"
+                }
+                return@withContext false to
+                    "Reverse conversion failed: ${result.log.take(1500)}\n\n" +
+                    "VCD size: ${localVcd.length()} bytes\n" +
+                    "First 64 bytes (hex):\n$hexDump"
             }
 
             val destRoot = DocumentFile.fromTreeUri(context, destUri)
