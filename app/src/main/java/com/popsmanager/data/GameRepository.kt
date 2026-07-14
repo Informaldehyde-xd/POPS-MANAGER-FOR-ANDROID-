@@ -152,7 +152,9 @@ class GameRepository(private val context: Context) {
             val result = reverseConverter.convert(localVcd, jobDir)
             if (!result.success || result.outputCue == null) {
                 val hexDump = try {
-                    val head = localVcd.inputStream().use { it.readNBytes(64) }
+                    val buffer = ByteArray(64)
+                    val bytesRead = localVcd.inputStream().use { it.read(buffer) }
+                    val head = if (bytesRead > 0) buffer.copyOf(bytesRead) else ByteArray(0)
                     head.joinToString(" ") { "%02X".format(it) }
                 } catch (e: Exception) {
                     "(couldn't read header: ${e.message})"
