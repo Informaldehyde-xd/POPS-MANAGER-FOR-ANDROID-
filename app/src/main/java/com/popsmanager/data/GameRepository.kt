@@ -4,9 +4,9 @@ import android.content.Context
 import android.net.Uri
 import androidx.documentfile.provider.DocumentFile
 import com.popsmanager.converter.Cue2PopsConverter
-import com.popsmanager.converter.Vcd2BinCueConverter
 import com.popsmanager.popstarter.PopstarterInstaller
 import com.popsmanager.util.Ps1IdReader
+import com.popsmanager.util.VcdExtractor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -20,7 +20,6 @@ data class VcdEntry(
 class GameRepository(private val context: Context) {
 
     private val converter = Cue2PopsConverter(context)
-    private val reverseConverter = Vcd2BinCueConverter(context)
     private val installer = PopstarterInstaller(context)
     private val workDir = File(context.cacheDir, "pops_work").apply { mkdirs() }
 
@@ -136,8 +135,9 @@ class GameRepository(private val context: Context) {
 
     /**
      * Converts a .VCD back to .bin/.cue and copies both onto the destination folder.
-     * Like the forward pipeline, this copies through app-private cache since the
-     * native converter needs real filesystem paths, not SAF content:// Uris.
+     * Parsed and rebuilt entirely in Kotlin (see VcdExtractor) rather than via a
+     * native tool — the previously-used native pops2cue had a real, unresolved
+     * compatibility bug with our verified-correct VCD files.
      */
     suspend fun convertVcdToBinCue(
         vcdUri: Uri,
@@ -149,21 +149,18 @@ class GameRepository(private val context: Context) {
             val localVcd = File(jobDir, vcdName)
             copyUriTo(vcdUri, localVcd) ?: return@withContext false to "Could not read the .VCD file."
 
-            val result = reverseConverter.convert(localVcd, jobDir)
-            if (!result.success || result.outputCue == null) {
-                val hexDump = try {
-                    val buffer = ByteArray(64)
-                    val bytesRead = localVcd.inputStream().use { it.read(buffer) }
-                    val head = if (bytesRead > 0) buffer.copyOf(bytesRead) else ByteArray(0)
-                    head.joinToString(" ") { "%02X".format(it) }
-                } catch (e: Exception) {
-                    "(couldn't read header: ${e.message})"
-                }
-                return@withContext false to
-                    "Reverse conversion failed: ${result.log.take(1500)}\n\n" +
-                    "VCD size: ${localVcd.length()} bytes\n" +
-                    "First 64 bytes (hex):\n$hexDump"
+            val info = VcdExtractor.parseVcdHeader(localVcd)
+            if (!info.isValid) {
+                return@withContext false to "Invalid VCD:\n${info.errors.joinToString("\n")}"
             }
+
+            val binFileName = vcdName.substringBeforeLast('.', vcdName) + ".bin"
+            val localBin = File(jobDir, binFileName)
+            VcdExtractor.extractBinData(localVcd, localBin)
+
+            val cueSheet = VcdExtractor.generateCueSheet(info, binFileName)
+            val localCue = File(jobDir, vcdName.substringBeforeLast('.', vcdName) + ".cue")
+            localCue.writeText(cueSheet)
 
             val destRoot = DocumentFile.fromTreeUri(context, destUri)
                 ?: return@withContext false to "Could not open destination folder."
@@ -177,10 +174,8 @@ class GameRepository(private val context: Context) {
                 return true
             }
 
-            if (!copyOut(result.outputCue)) return@withContext false to "Could not write the .cue file to the destination."
-            if (result.outputBin != null && !copyOut(result.outputBin)) {
-                return@withContext false to "Could not write the .bin file to the destination."
-            }
+            if (!copyOut(localCue)) return@withContext false to "Could not write the .cue file to the destination."
+            if (!copyOut(localBin)) return@withContext false to "Could not write the .bin file to the destination."
 
             true to null
         } catch (e: Exception) {
