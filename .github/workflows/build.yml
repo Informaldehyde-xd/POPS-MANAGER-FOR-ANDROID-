@@ -32,15 +32,10 @@ jobs:
 
       # Vendors the native BIN/CUE <-> VCD converter sources so CMake has
       # something to compile.
-      - name: Vendor cue2pops source (genuine v2.0 — required for pops2cue compatibility)
+      - name: Vendor cue2pops source (genuine v2.0)
         run: |
           rm -rf app/src/main/cpp/cue2pops
           git clone --depth 1 https://github.com/israpps/cue2pops app/src/main/cpp/cue2pops
-
-      - name: Vendor pops2cue source (only pops2cue.c is used from this repo)
-        run: |
-          rm -rf app/src/main/cpp/pops2cue
-          git clone --depth 1 https://github.com/bucanero/pops2cue app/src/main/cpp/pops2cue
 
       - name: Build debug APK
         run: gradle assembleDebug --stacktrace
